@@ -1,0 +1,40 @@
+version: '3.7'
+
+services:
+  ns1.example.com:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - /Users/margaret/dns-test/ns1.example.com/etc/bind:/etc/bind
+    networks:
+      dns-network:
+        ipv4_address: 172.28.1.1
+
+  ns2.example.com:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - /Users/margaret/dns-test/ns2.example.com/etc/bind:/etc/bind
+    networks:
+      dns-network:
+        ipv4_address: 172.28.2.2
+
+  ns3.example.com:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - /Users/margaret/dns-test/ns2.example.com/etc/bind:/etc/bind
+    networks:
+      dns-network:
+        ipv4_address: 172.28.3.3
+
+networks:
+  dns-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
