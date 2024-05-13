@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - /Users/margaret/dns-test/ns1.example.com/etc/bind:/etc/bind
+      - ../dns-test/ns1.example.com/etc/bind:/etc/bind
     networks:
       dns-network:
         ipv4_address: 172.28.1.1
@@ -16,7 +16,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - /Users/margaret/dns-test/ns2.example.com/etc/bind:/etc/bind
+      - ../dns-test/ns2.example.com/etc/bind:/etc/bind
     networks:
       dns-network:
         ipv4_address: 172.28.2.2
@@ -26,7 +26,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - /Users/margaret/dns-test/ns3.example.com/etc/bind:/etc/bind
+      - ../dns-test/ns3.example.com/etc/bind:/etc/bind
     networks:
       dns-network:
         ipv4_address: 172.28.3.3

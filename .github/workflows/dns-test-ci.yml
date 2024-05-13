@@ -30,7 +30,7 @@ jobs:
           CHANGED_FILES=$(git diff --name-only HEAD HEAD~1) # Получаем список измененных файлов
           echo "Changed files in the last commit: $CHANGED_FILES"
           # Если в коммите изменен servers.txt и есть изменения вне конфигурационных каталогов
-          if [[ "$CHANGED_FILES" == *"servers.txt"* && ! "$CHANGED_FILES" =~ ^(servers.txt|ns.*.example.com/.*$) ]]; then
+          if [[ "$CHANGED_FILES" == *"servers.txt"* && ! "$CHANGED_FILES" =~ ^(servers.txt|ns.*.example.com/.*)$ ]]; then
             echo "::error::Changes in servers.txt must be accompanied by changes in corresponding configurations only."
             exit 1 # Завершаем выполнение с ошибкой
           fi
