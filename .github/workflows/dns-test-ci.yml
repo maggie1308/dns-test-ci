@@ -43,7 +43,7 @@ jobs:
         if: env.servers_txt_changed == 'true' # Выполняется, если был изменен servers.txt
         run: |
           # Здесь вызов скрипта, который генерирует docker-compose.yml из servers.txt
-          python3 generate_docker_compose.py
+          python3 scripts/generate_docker_compose.py
 
       # Обновляем и перезапускаем контейнеры
       - name: Restart containers
@@ -60,7 +60,7 @@ jobs:
       - name: Perform DNS Tests
         run: |
           # Здесь вызов скрипта для тестирования DNS
-          bash perform_dns_tests.sh
+          bash scripts/perform_dns_tests.sh
 
       # Шаг для отката и повторения тестов, если файл servers.txt не изменялся
       - name: Rollback and repeat tests if servers.txt not changed
@@ -70,13 +70,13 @@ jobs:
           git reset --hard HEAD~1 # Откатываемся на один коммит назад
           echo "Generating docker-compose configuration..."
           # Повторная генерация конфигурации
-          python3 generate_docker_compose.py
+          python3 scripts/generate_docker_compose.py
           echo "Restarting containers..."
           docker-compose down
           docker-compose up -d
           echo "Performing initial tests..."
           # Повторное выполнение тестов
-          bash perform_dns_tests.sh
+          bash scripts/perform_dns_tests.sh
           echo "Updating to the latest commit..."
           git reset --hard HEAD@{1} # Возвращаемся к последнему коммиту
           echo "Forcing bind configurations reload..."
@@ -86,4 +86,4 @@ jobs:
           docker exec ns3.example.com rndc reload
           echo "Performing final tests..."
           # Повторное выполнение тестов с обновленной конфигурацией
-          bash perform_dns_tests.sh
+          bash scripts/perform_dns_tests.sh
