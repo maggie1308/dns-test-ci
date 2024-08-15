@@ -1,20 +1,30 @@
 import os
 
+# Функция для генерации файла docker-compose.yml на основе данных из servers.txt
 def generate_docker_compose():
-    # Открываем файл servers.txt и читаем его содержимое
+    # Открываем файл servers.txt и считываем все строки (список серверов)
     with open('../dns-test/servers.txt') as f:
         servers = f.readlines()
 
-    # Начальная часть файла docker-compose.yml
+    # Начальное содержание для docker-compose.yml
     compose_content = """
     version: '3.7'
 
     services:
     """
-    # Добавляем конфигурацию для каждого сервера из servers.txt
-    for server in servers:
+
+    # Базовый IP-адрес для сети
+    base_ip = "172.28"
+
+    # Проходим по каждому серверу в списке servers.txt
+    for index, server in enumerate(servers, start=1):
+        # Убираем пробелы и символы новой строки
         server = server.strip()
-        ip = f"172.28.{servers.index(server)+1}.1"
+        
+        # Генерируем уникальный IP-адрес на основе позиции сервера в списке
+        ip = f"{base_ip}.{index}.4"
+        
+        # Добавляем конфигурацию для каждого сервиса в docker-compose.yml
         compose_content += f"""
         {server}:
             build:
@@ -27,7 +37,7 @@ def generate_docker_compose():
                     ipv4_address: {ip}
         """
 
-    # Конфигурация сети
+    # Добавляем секцию с настройками сети в docker-compose.yml
     compose_content += """
     networks:
       dns-network:
@@ -37,9 +47,10 @@ def generate_docker_compose():
             - subnet: 172.28.0.0/16
     """
     
-    # Записываем сгенерированный контент в файл docker-compose.yml
+    # Записываем сгенерированный файл docker-compose.yml
     with open('docker-compose.yml', 'w') as f:
         f.write(compose_content)
 
+# Если скрипт запускается напрямую, то вызываем функцию генерации
 if __name__ == "__main__":
     generate_docker_compose()
