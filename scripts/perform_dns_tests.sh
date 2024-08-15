@@ -14,14 +14,18 @@ check_container_status() {
 
 # Функция для проверки DNS-записей
 check_dns_records() {
-    # Проходим по каждому контейнеру и проверяем DNS-записи
-    for container in ns1.example.com ns2.example.com ns3.example.com; do
-        echo "Checking DNS records for $container"
+    # Проходим по каждому серверу, указанному в servers.txt
+    while read -r line; do
+        # Извлекаем имя хоста (первое значение в строке)
+        server_name=$(echo $line | awk '{print $1}')
+        echo "Checking DNS records for $server_name"
+        
         # Проверяем SOA-запись
-        docker exec $container dig +short SOA example.com
+        docker exec $server_name dig +short SOA example.com
         # Проверяем NS-запись
-        docker exec $container dig +short NS example.com
-    done
+        docker exec $server_name dig +short NS example.com
+        
+    done < ../dns-test/servers.txt
 }
 
 # Вызываем функцию проверки статуса контейнеров
