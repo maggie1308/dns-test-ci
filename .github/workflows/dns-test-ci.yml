@@ -87,3 +87,5 @@ jobs:
           docker exec ns3.example.com rndc reload
           echo "Performing final tests..."
           bash scripts/perform_dns_tests.sh  # Повторное выполнение тестов DNS
+
+          
