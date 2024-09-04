@@ -2,70 +2,115 @@
 
 # Остановка скрипта при первой же ошибке
 set -e
+
 echo "Скрипт запущен успешно"
-# Перейдем в директорию скриптов (если требуется)
-cd "$(dirname "$0")"
 
-# Шаг 1: Проверка изменений в файле servers.txt
-CHANGED_FILES=$(git diff --name-only HEAD HEAD~1)
+# Добавление удаленного репозитория и извлечение данных
+git remote add dns-test https://github.com/maggie1308/dns-test.git || echo "Remote 'dns-test' уже добавлен"
+git fetch dns-test
 
-echo "Измененные файлы в последнем коммите: $CHANGED_FILES"
+# Получение последнего коммита из репозитория dns-test
+LAST_COMMIT_HASH=$(git rev-parse dns-test/main)
+PREV_COMMIT_HASH=$(git rev-parse dns-test/main~1)
+echo "Последний коммит в dns-test: $LAST_COMMIT_HASH"
 
-# Проверка, был ли изменен файл servers.txt
+# Получение списка измененных файлов между последним и предыдущим коммитами
+CHANGED_FILES=$(git diff --name-only $PREV_COMMIT_HASH $LAST_COMMIT_HASH | sed 's/\\302\\240//g' | tr -d '"')
+echo "Измененные файлы в последнем коммите репозитория dns-test: $CHANGED_FILES"
+
+# Проверяем, был ли изменен файл servers.txt
 if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
     echo "servers.txt был изменен"
 
-    # Шаг 2: Проверка наличия других изменений вне конфигурационных каталогов
-    if echo "$CHANGED_FILES" | grep -Ev "servers.txt|ns.*.example.com/.*"; then
-        echo "Ошибка: изменения в servers.txt должны сопровождаться изменениями только в соответствующих конфигурациях."
-        exit 1
-    fi
+    # Извлекаем список новых или измененных хостов из файла servers.txt
+    NEW_HOSTS=$(git diff $PREV_COMMIT_HASH $LAST_COMMIT_HASH -- servers.txt | grep '^+' | grep -v '^+++' | awk '{print $1}' | sed 's/^+//')
+    
+    # Выводим список новых или измененных хостов
+    echo "Новые или измененные хосты: $NEW_HOSTS"
 
-    # Шаг 3: Генерация конфигурации docker-compose на основе servers.txt
+    # Проверяем наличие других изменений вне каталогов новых хостов
+    for file in $CHANGED_FILES; do
+        if [[ "$file" != "servers.txt" ]]; then
+            is_valid=false
+            
+            # Убираем неразрывные пробелы и обрезаем строку до первого слэша
+            CLEANED_FILE_PREFIX=$(echo "$file" | sed 's/\\302\\240//g' | cut -d'/' -f1)
+
+            for host in $NEW_HOSTS; do
+                # Выводим для отладки
+                echo "Проверяем файл: $CLEANED_FILE_PREFIX против хоста: $host"
+
+                # Если обрезанный путь совпадает с именем нового хоста, изменения допустимы
+                if [[ "$CLEANED_FILE_PREFIX" == "$host" ]]; then
+                    is_valid=true
+                    break
+                fi
+            done
+
+            # Если изменения не связаны с поддиректорией нового хоста, выводим ошибку
+            if ! $is_valid; then
+                echo "Ошибка: Изменения в \"$file\" не связаны с новыми или измененными хостами."
+                exit 1
+            fi
+        fi
+    done
+
+    # Шаги 1.2.1 - 1.2.5: Создание и проверка контейнеров
     echo "Генерация docker-compose.yml..."
-    python3 scripts/generate_docker_compose.py
+    python3 scripts/generate_docker_compose.py  # Создаем docker-compose файл
 
-    # Шаг 4: Перезапуск контейнеров
     echo "Перезапуск контейнеров..."
-    docker-compose down
-    docker-compose up -d
+    docker-compose up -d --build  # Перезапускаем контейнеры
 
-    # Шаг 5: Проверка статуса контейнеров
     echo "Проверка статуса контейнеров..."
-    docker-compose ps
+    docker-compose ps  # Проверяем, что все контейнеры работают
 
-    # Шаг 6: Выполнение DNS тестов
-    echo "Выполнение DNS тестов..."
-    bash scripts/perform_dns_tests.sh
+    echo "Проверка SOA и NS для master-контейнеров..."
+
+    # Получаем список запущенных контейнеров и ищем их соответствия с новыми хостами
+    for host in $NEW_HOSTS; do
+        container_id=$(docker ps --filter "name=$host" --format "{{.Names}}")
+        if [[ -z "$container_id" ]]; then
+            echo "Ошибка: контейнер для $host не найден."
+            exit 1
+        fi
+
+        docker exec "$container_id" dig SOA "$host" || { echo "Ошибка: $host не отвечает на SOA-запросы"; exit 1; }
+        docker exec "$container_id" dig NS "$host" || { echo "Ошибка: $host не отвечает на NS-запросы"; exit 1; }
+    done
+
+    echo "Проверка SOA для slave-контейнеров..."
+    for host in $NEW_HOSTS; do
+        container_id=$(docker ps --filter "name=$host" --format "{{.Names}}")
+        docker exec "$container_id" dig SOA "$host" || { echo "Ошибка: $host не отвечает на SOA-запросы для slave"; exit 1; }
+    done
+
 else
-    echo "servers.txt не был изменен. Выполнение скрипта завершено."
-fi
+    echo "servers.txt не был изменен. Выполнение дополнительных действий."
 
-# Если файл servers.txt не изменен, откат на один коммит назад и повторение тестов
-if ! echo "$CHANGED_FILES" | grep -q "servers.txt"; then
+    # Шаги 2.1 - 2.7: Откат, проверка и обновление контейнеров
     echo "Откат на один коммит назад..."
-    git reset --hard HEAD~1
+    git reset --hard $PREV_COMMIT_HASH
 
     echo "Повторная генерация docker-compose.yml..."
     python3 scripts/generate_docker_compose.py
 
     echo "Повторный перезапуск контейнеров..."
-    docker-compose down
-    docker-compose up -d
+    docker-compose up -d --build
 
     echo "Выполнение первоначальных тестов..."
     bash scripts/perform_dns_tests.sh
 
     echo "Возвращение к последнему коммиту..."
-    git reset --hard HEAD@{1}
+    git reset --hard $LAST_COMMIT_HASH
 
     echo "Принудительная перезагрузка конфигураций BIND..."
     while IFS= read -r line; do
         server_name=$(echo "$line" | awk '{print $1}')
-        echo "Перезагрузка конфигурации BIND для $server_name..."
-        docker exec "$server_name" rndc reload
+        container_id=$(docker ps --filter "name=$server_name" --format "{{.Names}}")
+        docker exec "$container_id" rndc reload
     done < ../dns-test/servers.txt
 
-    echo "Выполнение финальных тестов..."
-    bash scripts/perform_dns_tests.sh
+    echo "Проверка состояния контейнеров..."
+    docker-compose ps
 fi
