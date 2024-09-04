@@ -37,12 +37,10 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
             CLEANED_FILE_PREFIX=$(echo "$file" | sed 's/\\302\\240//g' | cut -d'/' -f1)
 
             for host in $NEW_HOSTS; do
-                # Выводим для отладки
-                echo "Проверяем файл: $CLEANED_FILE_PREFIX против хоста: $host"
-
                 # Если обрезанный путь совпадает с именем нового хоста, изменения допустимы
                 if [[ "$CLEANED_FILE_PREFIX" == "$host" ]]; then
                     is_valid=true
+                    echo "Измененный файл конфигурации для $host: $file - Верно"
                     break
                 fi
             done
@@ -52,6 +50,22 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
                 echo "Ошибка: Изменения в \"$file\" не связаны с новыми или измененными хостами."
                 exit 1
             fi
+        fi
+    done
+
+    # Проверка, чтобы каждый новый хост имел хотя бы одно изменение в своей директории
+    for host in $NEW_HOSTS; do
+        has_changes=false
+        for file in $CHANGED_FILES; do
+            CLEANED_FILE_PREFIX=$(echo "$file" | sed 's/\\302\\240//g' | cut -d'/' -f1)
+            if [[ "$CLEANED_FILE_PREFIX" == "$host" ]]; then
+                has_changes=true
+                break
+            fi
+        done
+        if ! $has_changes; then
+            echo "Ошибка: Хост \"$host\" добавлен в servers.txt, но нет соответствующих изменений в конфигурации."
+            exit 1
         fi
     done
 
@@ -67,7 +81,7 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
 
     echo "Проверка SOA и NS для master-контейнеров..."
 
-    # Получаем список запущенных контейнеров и ищем их соответствия с новыми хостами
+    # Получаем список запущенных контейнеров и проверяем соответствие с новыми хостами
     for host in $NEW_HOSTS; do
         container_id=$(docker ps --filter "name=$host" --format "{{.Names}}")
         if [[ -z "$container_id" ]]; then
@@ -75,7 +89,10 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
             exit 1
         fi
 
+        # Проверяем SOA и NS для каждого контейнера
+        echo "Проверка SOA для $host (контейнер $container_id)..."
         docker exec "$container_id" dig SOA "$host" || { echo "Ошибка: $host не отвечает на SOA-запросы"; exit 1; }
+        echo "Проверка NS для $host (контейнер $container_id)..."
         docker exec "$container_id" dig NS "$host" || { echo "Ошибка: $host не отвечает на NS-запросы"; exit 1; }
     done
 
