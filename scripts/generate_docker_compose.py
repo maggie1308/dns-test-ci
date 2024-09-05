@@ -48,4 +48,3 @@ networks:
 # Запускаем функцию, если скрипт был вызван напрямую
 if __name__ == "__main__":
     generate_docker_compose()
-
