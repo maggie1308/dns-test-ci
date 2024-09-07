@@ -98,27 +98,37 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
 
     echo "Проверка SOA и NS для master-контейнеров..."
 
-    # Получаем список запущенных контейнеров и проверяем соответствие с новыми хостами
+    # Проверка, является ли контейнер мастером или слейвом
     for host in $NEW_HOSTS; do
         container_id=$(docker ps --filter "name=$host" --format "{{.Names}}")
-        if [[ -z "$container_id" ]]; then
-            echo "Ошибка: контейнер для $host не найден."
+        
+        # Проверяем конфигурацию контейнера для определения его роли
+        if docker exec "$container_id" grep -q "type master;" /etc/bind/named.conf; then
+            echo "$container_id является мастер-контейнером"
+            ROLE="master"
+        elif docker exec "$container_id" grep -q "type slave;" /etc/bind/named.conf; then
+            echo "$container_id является слейв-контейнером"
+            ROLE="slave"
+        else
+            echo "Ошибка: не удалось определить роль контейнера $container_id"
             exit 1
         fi
 
-        # Проверяем SOA и NS для каждого контейнера через localhost
-        echo "Проверка SOA для $container_id (контейнер $container_id)..."
-        docker exec "$container_id" dig @localhost SOA example.com || { echo "Ошибка: $host не отвечает на SOA-запросы"; exit 1; }
+        # Дальнейшая обработка в зависимости от роли контейнера
+        if [[ "$ROLE" == "master" ]]; then
+            # Проверка для мастер-контейнеров
+            echo "Проверка SOA для $container_id (контейнер $container_id)..."
+            docker exec "$container_id" dig @localhost SOA example.com || { echo "Ошибка: $host не отвечает на SOA-запросы"; exit 1; }
 
-        echo "Проверка NS для $container_id (контейнер $container_id)..."
-        docker exec "$container_id" dig @localhost NS example.com || { echo "Ошибка: $host не отвечает на NS-запросы"; exit 1; }
+            echo "Проверка NS для $container_id (контейнер $container_id)..."
+            docker exec "$container_id" dig @localhost NS example.com || { echo "Ошибка: $host не отвечает на NS-запросы"; exit 1; }
+        elif [[ "$ROLE" == "slave" ]]; then
+            # Проверка для слейв-контейнеров
+            echo "Проверка SOA для слейв-контейнера $container_id..."
+            docker exec "$container_id" dig @localhost SOA example.com || { echo "Ошибка: $host не отвечает на SOA-запросы для slave"; exit 1; }
+        fi
     done
 
-    echo "Проверка SOA для slave-контейнеров..."
-    for host in $NEW_HOSTS; do
-        container_id=$(docker ps --filter "name=$host" --format "{{.Names}}")
-        docker exec "$container_id" dig @localhost SOA example.com || { echo "Ошибка: $host не отвечает на SOA-запросы для slave"; exit 1; }
-    done
 else
     echo "Файл servers.txt не изменен. Завершение работы скрипта."
 fi
