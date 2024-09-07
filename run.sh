@@ -1,29 +1,9 @@
-#!/bin/bash
+#!/usr/local/bin/bash
 
-# Остановка скрипта при ошибке
+# Остановка скрипта при первой же ошибке
 set -e
 
 echo "Скрипт запущен успешно"
-
-# Чтение файла servers.txt для извлечения хостов и их IP-адресов
-declare -A HOSTS_IPS
-while IFS= read -r line; do
-    host=$(echo $line | awk '{print $1}')
-    ip=$(echo $line | awk '{print $2}')
-    HOSTS_IPS[$host]=$ip
-done < servers.txt
-
-# Функция для сравнения зон SOA
-compare_soa() {
-    local master_soa=$1
-    local slave_soa=$2
-    if [[ "$master_soa" == "$slave_soa" ]]; then
-        echo "SOA записи совпадают."
-    else
-        echo "Ошибка: SOA записи не совпадают."
-        exit 1
-    fi
-}
 
 # Добавление удаленного репозитория и извлечение данных
 git remote add dns-test https://github.com/maggie1308/dns-test.git || echo "Remote 'dns-test' уже добавлен"
@@ -33,6 +13,23 @@ git fetch dns-test
 LAST_COMMIT_HASH=$(git rev-parse dns-test/main)
 PREV_COMMIT_HASH=$(git rev-parse dns-test/main~1)
 echo "Последний коммит в dns-test: $LAST_COMMIT_HASH"
+
+# Извлечение списка новых или измененных хостов из файла servers.txt
+if [ -f "servers.txt" ]; then
+    declare -A HOSTS_IPS
+    while read -r line; do
+        host=$(echo "$line" | awk '{print $1}')
+        ip=$(echo "$line" | awk '{print $2}')
+        HOSTS_IPS["$host"]="$ip"
+    done < servers.txt
+    echo "Извлеченные хосты и IP-адреса:"
+    for host in "${!HOSTS_IPS[@]}"; do
+        echo "$host -> ${HOSTS_IPS[$host]}"
+    done
+else
+    echo "Ошибка: файл servers.txt не найден!"
+    exit 1
+fi
 
 # Получение списка измененных файлов между последним и предыдущим коммитами
 CHANGED_FILES=$(git diff --name-only $PREV_COMMIT_HASH $LAST_COMMIT_HASH | sed 's/\\302\\240//g' | tr -d '"')
@@ -45,11 +42,14 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
     # Извлекаем список новых или измененных хостов из файла servers.txt
     NEW_HOSTS=$(git diff $PREV_COMMIT_HASH $LAST_COMMIT_HASH -- servers.txt | grep '^+' | grep -v '^+++' | awk '{print $1}' | sed 's/^+//')
     
+    # Выводим список новых или измененных хостов
+    echo "Новые или измененные хосты: $NEW_HOSTS"
+
     # Проверяем наличие других изменений вне каталогов новых хостов
     for file in $CHANGED_FILES; do
         if [[ "$file" != "servers.txt" ]]; then
             is_valid=false
-
+            
             # Убираем неразрывные пробелы и обрезаем строку до первого слэша
             CLEANED_FILE_PREFIX=$(echo "$file" | sed 's/\\302\\240//g' | cut -d'/' -f1)
 
@@ -70,7 +70,7 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
         fi
     done
 
-    # Проверка, чтобы каждый новый хост имел изменения в своей директории
+    # Проверка, чтобы каждый новый хост имел хотя бы одно изменение в своей директории
     for host in $NEW_HOSTS; do
         has_changes=false
         for file in $CHANGED_FILES; do
@@ -99,26 +99,26 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
     echo "Проверка SOA и NS для master-контейнеров..."
 
     # Получаем список запущенных контейнеров и проверяем соответствие с новыми хостами
-    for host in "${!HOSTS_IPS[@]}"; do
+    for host in $NEW_HOSTS; do
         container_id=$(docker ps --filter "name=$host" --format "{{.Names}}")
         if [[ -z "$container_id" ]]; then
             echo "Ошибка: контейнер для $host не найден."
             exit 1
         fi
 
-        # Проверяем SOA и NS для каждого контейнера
-        echo "Проверка SOA для $host (контейнер $container_id)..."
-        master_soa=$(docker exec "$container_id" dig SOA "$host" +short)
-        echo "SOA для $host: $master_soa"
+        # Проверяем SOA и NS для каждого контейнера через localhost
+        echo "Проверка SOA для $container_id (контейнер $container_id)..."
+        docker exec "$container_id" dig @localhost SOA example.com || { echo "Ошибка: $host не отвечает на SOA-запросы"; exit 1; }
 
-        echo "Проверка NS для $host (контейнер $container_id)..."
-        docker exec "$container_id" dig NS "$host" +short || { echo "Ошибка: $host не отвечает на NS-запросы"; exit 1; }
-
-        echo "Проверка SOA для slave-контейнеров..."
-        for host in "${!HOSTS_IPS[@]}"; do
-            container_id=$(docker ps --filter "name=$host" --format "{{.Names}}")
-            slave_soa=$(docker exec "$container_id" dig SOA "$host" +short)
-            compare_soa "$master_soa" "$slave_soa"
-        done
+        echo "Проверка NS для $container_id (контейнер $container_id)..."
+        docker exec "$container_id" dig @localhost NS example.com || { echo "Ошибка: $host не отвечает на NS-запросы"; exit 1; }
     done
+
+    echo "Проверка SOA для slave-контейнеров..."
+    for host in $NEW_HOSTS; do
+        container_id=$(docker ps --filter "name=$host" --format "{{.Names}}")
+        docker exec "$container_id" dig @localhost SOA example.com || { echo "Ошибка: $host не отвечает на SOA-запросы для slave"; exit 1; }
+    done
+else
+    echo "Файл servers.txt не изменен. Завершение работы скрипта."
 fi

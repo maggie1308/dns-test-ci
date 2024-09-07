@@ -1,40 +1,42 @@
+
 version: '3.7'
 
 services:
+    
   ns1.example.com:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile  # Используем общий Dockerfile для всех сервисов
     volumes:
-      - ../dns-test/ns1.example.com/etc/bind:/etc/bind
+      - ../dns-test/ns1.example.com/etc/bind:/etc/bind  # Монтируем конфигурации BIND для каждого хоста
     networks:
       dns-network:
-        ipv4_address: 172.28.1.1
-
+        ipv4_address: 172.28.1.1  # Устанавливаем IP-адрес из файла servers.txt
+    
   ns2.example.com:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile  # Используем общий Dockerfile для всех сервисов
     volumes:
-      - ../dns-test/ns2.example.com/etc/bind:/etc/bind
+      - ../dns-test/ns2.example.com/etc/bind:/etc/bind  # Монтируем конфигурации BIND для каждого хоста
     networks:
       dns-network:
-        ipv4_address: 172.28.2.2
-
+        ipv4_address: 172.28.2.2  # Устанавливаем IP-адрес из файла servers.txt
+    
   ns3.example.com:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile  # Используем общий Dockerfile для всех сервисов
     volumes:
-      - ../dns-test/ns3.example.com/etc/bind:/etc/bind
+      - ../dns-test/ns3.example.com/etc/bind:/etc/bind  # Монтируем конфигурации BIND для каждого хоста
     networks:
       dns-network:
-        ipv4_address: 172.28.3.3
-
+        ipv4_address: 172.28.3.3  # Устанавливаем IP-адрес из файла servers.txt
+    
 networks:
   dns-network:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.28.0.0/16
-
+        - subnet: 172.28.0.0/16  # Определяем подсеть для контейнеров
+    
