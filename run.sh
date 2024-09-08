@@ -88,7 +88,6 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
 
 else
     echo "Файл servers.txt не изменен."
-   
 
     # Получение последнего и предыдущего коммитов
     LAST_COMMIT_HASH=$(git rev-parse dns-test/main)
@@ -110,25 +109,57 @@ else
             # Если папка (контейнер) еще не добавлена, добавляем её в список
             if [[ ! " ${CHANGED_CONTAINERS[@]} " =~ " ${CLEANED_FILE_PREFIX} " ]]; then
                 CHANGED_CONTAINERS+=("$CLEANED_FILE_PREFIX")
-                echo $CLEANED_FILE_PREFIX
+                echo "Найден измененный контейнер: $CLEANED_FILE_PREFIX"
             fi
         fi
     done
-    echo ${CHANGED_CONTAINERS[@]}
+
     # Проверка, есть ли изменённые контейнеры
     if [ ${#CHANGED_CONTAINERS[@]} -eq 0 ]; then
         echo "Нет измененных контейнеров"
         exit 0
     fi
 
- 
-    # Преобразуем список контейнеров в строку с пробелами (для передачи в Python-скрипт)
-    CHANGED_CONTAINERS_STR=$(IFS=" " ; echo "${CHANGED_CONTAINERS[*]}")
+    echo "Изменённые контейнеры: ${CHANGED_CONTAINERS[@]}"
 
-    # Вывод строки для отладки
-    echo "Строка для передачи в Python: $CHANGED_CONTAINERS_STR"
+    # Откат на предыдущий коммит в репозитории dns-test
+    echo "Откатываем репозиторий dns-test на один коммит..."
+    git -C $DNS_TEST_DIR checkout $PREV_COMMIT_HASH
 
-    # Вызов Python-скрипта с передачей контейнеров в виде аргументов
-    python3 y.py "${CHANGED_CONTAINERS[@]}"
+    # Генерация docker-compose и запуск контейнеров для предыдущего коммита
+    echo "Генерация docker-compose.yml..."
+    python3 scripts/generate_docker_compose.py
+
+    echo "Запуск контейнеров для предыдущего коммита..."
+    docker-compose up -d --build
+
+    # Вызов Python-скрипта для извлечения SOA
+    echo "Извлечение SOA-записей для контейнеров (старое состояние)..."
+    python3 check_soa.py "${CHANGED_CONTAINERS[@]}"
+    cp soa_results.json soa_results_old.json
+
+    # Возвращаемся на последний коммит в репозитории dns-test
+    echo "Возвращаемся на последний коммит в репозитории dns-test..."
+    git -C $DNS_TEST_DIR checkout $LAST_COMMIT_HASH
+
+
+    # Перезапуск контейнеров для последнего коммита
+    echo "Перезапуск контейнеров для последнего коммита..."
+    docker-compose up -d --build
+
+    # Переконфигурируем bind'ы для каждого изменённого контейнера
+    echo "Переконфигурируем bind'ы..."
+    for container in "${CHANGED_CONTAINERS[@]}"; do
+        docker exec dns-test-ci-${container}-1 rndc reload
+    done
+
+    # Вызов Python-скрипта для извлечения SOA
+    echo "Извлечение SOA-записей для контейнеров (новое состояние)..."
+    python3 check_soa.py "${CHANGED_CONTAINERS[@]}"
+    cp soa_results.json soa_results_new.json
+
+    # Вызов Python-скрипта для сравнения SOA
+    echo "Сравнение SOA-записей..."
+    python3 compare_soa.py soa_results_old.json soa_results_new.json
 
 fi

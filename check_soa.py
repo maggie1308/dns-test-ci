@@ -121,6 +121,9 @@ changed_machines = sys.argv[1:]
 # Запуск обработки контейнеров
 soa_data = process_containers(changed_machines)
 
-# Вывод результата
-print("Результат проверки SOA для изменённых контейнеров:")
-print(soa_data)
+# Сохранение результата в файл JSON
+with open('soa_results.json', 'w') as f:
+    json.dump(soa_data, f)
+
+# Вывод для Bash-скрипта
+print(json.dumps(soa_data))
