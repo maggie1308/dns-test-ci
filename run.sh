@@ -14,9 +14,6 @@ LAST_COMMIT_HASH=$(git rev-parse dns-test/main)
 PREV_COMMIT_HASH=$(git rev-parse dns-test/main~1)
 echo "Последний коммит в dns-test: $LAST_COMMIT_HASH"
 
-#!/usr/local/bin/bash
-
-
 # Получение списка измененных файлов между последним и предыдущим коммитами
 CHANGED_FILES=$(git diff --name-only $PREV_COMMIT_HASH $LAST_COMMIT_HASH | sed 's/\\302\\240//g' | tr -d '"')
 echo "Измененные файлы в последнем коммите репозитория dns-test: $CHANGED_FILES"
@@ -89,12 +86,15 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
 else
     echo "Файл servers.txt не изменен."
 
-    # Получение последнего и предыдущего коммитов
-    LAST_COMMIT_HASH=$(git rev-parse dns-test/main)
-    PREV_COMMIT_HASH=$(git rev-parse dns-test/main~1)
+    # Путь к директории репозитория dns-test
+    DNS_TEST_DIR="/Users/margaret/dns-test"  # Заменить на свой
+
+    # Получение последнего и предыдущего коммитов в репозитории dns-test
+    #LAST_COMMIT_HASH=$(git -C $DNS_TEST_DIR rev-parse main)
+    #PREV_COMMIT_HASH=$(git -C $DNS_TEST_DIR rev-parse main~1)
 
     # Получение списка измененных файлов между последним и предыдущим коммитами
-    CHANGED_FILES=$(git diff --name-only $PREV_COMMIT_HASH $LAST_COMMIT_HASH | sed 's/\\302\\240//g' | tr -d '"')
+    CHANGED_FILES=$(git -C $DNS_TEST_DIR diff --name-only $PREV_COMMIT_HASH $LAST_COMMIT_HASH | sed 's/\\302\\240//g' | tr -d '"')
     echo "Измененные файлы в последнем коммите репозитория dns-test: $CHANGED_FILES"
 
     # Инициализируем список для хранения изменённых контейнеров
@@ -133,6 +133,8 @@ else
     echo "Запуск контейнеров для предыдущего коммита..."
     docker-compose up -d --build
 
+    #python3 soa_ns_check_script.py
+
     # Вызов Python-скрипта для извлечения SOA
     echo "Извлечение SOA-записей для контейнеров (старое состояние)..."
     python3 check_soa.py "${CHANGED_CONTAINERS[@]}"
@@ -141,7 +143,6 @@ else
     # Возвращаемся на последний коммит в репозитории dns-test
     echo "Возвращаемся на последний коммит в репозитории dns-test..."
     git -C $DNS_TEST_DIR checkout $LAST_COMMIT_HASH
-
 
     # Перезапуск контейнеров для последнего коммита
     echo "Перезапуск контейнеров для последнего коммита..."
@@ -153,6 +154,8 @@ else
         docker exec dns-test-ci-${container}-1 rndc reload
     done
 
+    #python3 soa_ns_check_script.py
+
     # Вызов Python-скрипта для извлечения SOA
     echo "Извлечение SOA-записей для контейнеров (новое состояние)..."
     python3 check_soa.py "${CHANGED_CONTAINERS[@]}"
@@ -161,5 +164,4 @@ else
     # Вызов Python-скрипта для сравнения SOA
     echo "Сравнение SOA-записей..."
     python3 compare_soa.py soa_results_old.json soa_results_new.json
-
 fi
