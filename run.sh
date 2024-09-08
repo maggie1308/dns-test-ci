@@ -84,7 +84,7 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
 
     echo "Проверка SOA и NS для master-контейнеров..."
 
-    
+    python3 soa_ns_check_script.py  
 
 else
     echo "Файл servers.txt не изменен. Завершение работы скрипта."
