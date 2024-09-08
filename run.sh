@@ -86,39 +86,6 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
 
     
 
-# IP-адреса master и slave серверов
-    MASTER_IP="172.28.1.1"
-    SLAVE_IPS=("172.28.2.2" "172.28.3.3")
-    ZONE="example.com"
-
-# Функция для запроса SOA записи
-    get_soa() {
-        local ip=$1
-        local zone=$2
-        dig @$ip $zone SOA +short
-    }
-
-# Получаем SOA запись с master сервера
-    MASTER_SOA=$(get_soa $MASTER_IP $ZONE)
-
-# Проверяем SOA записи на slave серверах
-    for SLAVE_IP in "${SLAVE_IPS[@]}"; do
-        SLAVE_SOA=$(get_soa $SLAVE_IP $ZONE)
-    
-        echo "Master SOA: $MASTER_SOA"
-        echo "Slave ($SLAVE_IP) SOA: $SLAVE_SOA"
-    
-        if [ "$MASTER_SOA" == "$SLAVE_SOA" ]; then
-            echo "SOA записи совпадают для $MASTER_IP и $SLAVE_IP."
-        else
-            echo "Ошибка: SOA записи НЕ совпадают для $MASTER_IP и $SLAVE_IP."
-            exit 1
-        fi
-    done
-
-    echo "Все SOA записи совпадают."
-
-
 else
     echo "Файл servers.txt не изменен. Завершение работы скрипта."
 fi

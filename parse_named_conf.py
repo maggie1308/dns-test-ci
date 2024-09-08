@@ -5,11 +5,8 @@ import json
 # Функция для получения IP-адреса контейнера
 def get_container_ip(container_id):
     try:
-        # Выполняем docker inspect для получения информации о контейнере
         result = subprocess.check_output(["docker", "inspect", container_id])
         container_info = json.loads(result.decode())
-        
-        # Получаем IP из первого доступного сетевого интерфейса
         networks = container_info[0]["NetworkSettings"]["Networks"]
         if networks:
             for network_data in networks.values():
@@ -29,7 +26,7 @@ def get_container_config(container_id):
     except subprocess.CalledProcessError as e:
         print(f"Ошибка при получении конфигурации с {container_id}: {e}")
         return None
-
+    
 # Функция для выполнения DNS-запроса SOA
 def get_soa(ip, zone):
     try:
@@ -39,18 +36,24 @@ def get_soa(ip, zone):
         print(f"Ошибка при выполнении запроса SOA для зоны {zone} на {ip}: {e}")
         return None
 
+# Функция для выполнения DNS-запроса NS
+def get_ns(ip, zone):
+    try:
+        result = subprocess.check_output(["dig", f"@{ip}", zone, "NS", "+short"])
+        return result.decode().strip().split('\n')
+    except subprocess.CalledProcessError as e:
+        print(f"Ошибка при выполнении запроса NS для зоны {zone} на {ip}: {e}")
+        return None
+
 # Универсальная функция для поиска мастер-зон и IP-адресов для allow-transfer
 def find_master_zones_with_ips(config_data):
-    # Универсальное регулярное выражение для парсинга зон с и без IN
     pattern = r'zone\s+"([\w\.]+)"(?:\s+IN)?\s*\{\s*[^}]*?type\s+master;\s*[^}]*?allow-transfer\s*\{([^}]+)\};'
     matches = re.findall(pattern, config_data, re.DOTALL)
-
     master_zones = []
     for match in matches:
-        zone_name = match[0].strip()  # Название зоны
-        ip_addresses = [ip.strip() for ip in match[1].split(';') if ip.strip()]  # Очистка IP-адресов и разбиение
+        zone_name = match[0].strip()
+        ip_addresses = [ip.strip() for ip in match[1].split(';') if ip.strip()]
         master_zones.append((zone_name, ip_addresses))
-
     return master_zones
 
 # Основная функция для обработки контейнеров
@@ -86,7 +89,15 @@ def process_containers(containers):
                         print(f"Не удалось получить SOA запись для master {zone_name} на {master_ip}")
                         continue
 
-                    # Проверяем SOA для slave-контейнеров и сверяем с master
+                    # Проверяем NS для master-контейнера
+                    master_ns = get_ns(master_ip, zone_name)
+                    if master_ns:
+                        print(f"NS записи для master {zone_name} на {master_ip}: {master_ns}")
+                    else:
+                        print(f"Не удалось получить NS записи для master {zone_name} на {master_ip}")
+                        continue
+
+                    # Проверяем SOA и NS для slave-контейнеров и сверяем с master
                     for slave_ip in slave_ips:
                         slave_soa = get_soa(slave_ip, zone_name)
                         if slave_soa:
@@ -97,6 +108,17 @@ def process_containers(containers):
                                 print(f"Ошибка: SOA записи не совпадают для {zone_name}")
                         else:
                             print(f"Не удалось получить SOA запись для slave {zone_name} на {slave_ip}")
+                        
+                        # Проверяем NS для slave-контейнеров
+                        slave_ns = get_ns(slave_ip, zone_name)
+                        if slave_ns:
+                            print(f"NS записи для slave {zone_name} на {slave_ip}: {slave_ns}")
+                            if set(master_ns) == set(slave_ns):
+                                print(f"NS записи совпадают для {zone_name}")
+                            else:
+                                print(f"Ошибка: NS записи не совпадают для {zone_name}")
+                        else:
+                            print(f"Не удалось получить NS запись для slave {zone_name} на {slave_ip}")
             else:
                 print(f"Мастер-зоны не найдены для контейнера {container_id}.")
         else:
