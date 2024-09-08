@@ -87,5 +87,43 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
     python3 soa_ns_check_script.py  
 
 else
-    echo "Файл servers.txt не изменен. Завершение работы скрипта."
+    echo "Файл servers.txt не изменен."
+   
+
+    # Получение последнего и предыдущего коммитов
+    LAST_COMMIT_HASH=$(git rev-parse dns-test/main)
+    PREV_COMMIT_HASH=$(git rev-parse dns-test/main~1)
+
+    # Получение списка измененных файлов между последним и предыдущим коммитами
+    CHANGED_FILES=$(git diff --name-only $PREV_COMMIT_HASH $LAST_COMMIT_HASH | sed 's/\\302\\240//g' | tr -d '"')
+    echo "Измененные файлы в последнем коммите репозитория dns-test: $CHANGED_FILES"
+
+    # Инициализируем список для хранения изменённых контейнеров
+    CHANGED_CONTAINERS=()
+
+    # Проход по измененным файлам
+    for file in $CHANGED_FILES; do
+        if [[ "$file" != "servers.txt" ]]; then
+            # Убираем неразрывные пробелы и обрезаем строку до первого слэша
+            CLEANED_FILE_PREFIX=$(echo "$file" | sed 's/\\302\\240//g' | cut -d'/' -f1)
+        
+            # Если папка (контейнер) еще не добавлена, добавляем её в список
+            if [[ ! " ${CHANGED_CONTAINERS[@]} " =~ " ${CLEANED_FILE_PREFIX} " ]]; then
+                CHANGED_CONTAINERS+=("$CLEANED_FILE_PREFIX")
+            fi
+        fi
+    done
+
+    # Проверка, есть ли изменённые контейнеры
+    if [ ${#CHANGED_CONTAINERS[@]} -eq 0 ]; then
+        echo "Нет измененных контейнеров"
+        exit 0
+    fi
+
+    # Преобразуем список контейнеров в строку с пробелами (для передачи в Python-скрипт)
+    CHANGED_CONTAINERS_STR=$(IFS=" " ; echo "${CHANGED_CONTAINERS[*]}")
+
+    # Вызов Python-скрипта с изменёнными контейнерами
+    #python3 /path/to/your/python_script.py $CHANGED_CONTAINERS_STR
+
 fi
