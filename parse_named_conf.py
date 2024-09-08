@@ -2,6 +2,20 @@ import re
 import subprocess
 import json
 
+# Функция для получения списка контейнеров с префиксом "dns-test-ci-"
+def get_dns_test_containers():
+    try:
+        # Выполняем docker ps для получения списка всех запущенных контейнеров
+        result = subprocess.check_output(["docker", "ps", "--format", "{{.Names}}"])
+        container_names = result.decode().strip().split('\n')
+        
+        # Фильтруем контейнеры, которые начинаются с "dns-test-ci-"
+        dns_test_containers = [name for name in container_names if name.startswith("dns-test-ci-")]
+        return dns_test_containers
+    except subprocess.CalledProcessError as e:
+        print(f"Ошибка при получении списка контейнеров: {e}")
+        return []
+
 # Функция для получения IP-адреса контейнера
 def get_container_ip(container_id):
     try:
@@ -57,7 +71,14 @@ def find_master_zones_with_ips(config_data):
     return master_zones
 
 # Основная функция для обработки контейнеров
-def process_containers(containers):
+def process_containers():
+    # Получаем список контейнеров, которые начинаются с "dns-test-ci-"
+    containers = get_dns_test_containers()
+    
+    if not containers:
+        print("Не удалось найти контейнеры, начинающиеся с 'dns-test-ci-'")
+        return
+
     for container_id in containers:
         print(f"Обработка конфигурации для контейнера: {container_id}")
         
@@ -124,8 +145,5 @@ def process_containers(containers):
         else:
             print(f"Не удалось прочитать конфигурацию контейнера {container_id}.")
 
-# Пример списка контейнеров с префиксом "dns-test-ci-" (можно заменить на результат вызова docker ps)
-containers = ["dns-test-ci-ns1.example.com-1", "dns-test-ci-ns2.example.com-1", "dns-test-ci-ns3.example.com-1"]
-
 # Запуск обработки контейнеров
-process_containers(containers)
+process_containers()
