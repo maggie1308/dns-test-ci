@@ -1,16 +1,27 @@
 import re
 import subprocess
 import json
+import sys  # Для получения аргументов командной строки
 
-# Функция для получения списка контейнеров с префиксом "dns-test-ci-"
-def get_dns_test_containers(containers):
+# Префикс для контейнеров
+CONTAINER_PREFIX = "dns-test-ci-"
+
+# Функция для получения списка контейнеров с префиксом и их названий машин
+def get_dns_test_containers(machine_names):
     try:
         # Выполняем docker ps для получения списка всех запущенных контейнеров
         result = subprocess.check_output(["docker", "ps", "--format", "{{.Names}}"])
         container_names = result.decode().strip().split('\n')
-        
-        # Фильтруем контейнеры, которые начинаются с "dns-test-ci-" и присутствуют в переданном списке
-        dns_test_containers = [name for name in container_names if name in containers]
+        print(result)
+        print(container_names)
+        # Преобразуем имена машин в имена контейнеров с префиксом
+        containers_to_check = [ CONTAINER_PREFIX + name + "-1" for name in machine_names]
+        print("Преобразуем имена машин в имена контейнеров с префиксом")
+        print(containers_to_check)
+        # Фильтруем контейнеры, которые присутствуют среди запущенных контейнеров
+        dns_test_containers = [name for name in container_names if name in containers_to_check]
+        print("Фильтруем контейнеры, которые присутствуют среди запущенных контейнеров")
+        print(dns_test_containers)
         return dns_test_containers
     except subprocess.CalledProcessError as e:
         print(f"Ошибка при получении списка контейнеров: {e}")
@@ -62,10 +73,10 @@ def find_master_zones_with_ips(config_data):
     return master_zones
 
 # Основная функция для обработки контейнеров и создания массива со словарями
-def process_containers(containers):
-    # Получаем список контейнеров для обработки (только те, чьи конфигурации изменились)
-    dns_test_containers = get_dns_test_containers(containers)
-    
+def process_containers(machine_names):
+    # Преобразуем имена машин в имена контейнеров и фильтруем запущенные контейнеры
+    dns_test_containers = get_dns_test_containers(machine_names)
+    print(dns_test_containers)
     if not dns_test_containers:
         print("Не удалось найти контейнеры, чьи конфигурации изменились")
         return []
@@ -104,9 +115,11 @@ def process_containers(containers):
 
     return result_list
 
-# Пример вызова функции
-changed_containers = ["dns-test-ci-ns1.example.com", "dns-test-ci-ns2.example.com"]
-soa_data = process_containers(changed_containers)
+# Получаем изменённые машины из аргументов командной строки
+changed_machines = sys.argv[1:]
+
+# Запуск обработки контейнеров
+soa_data = process_containers(changed_machines)
 
 # Вывод результата
 print("Результат проверки SOA для изменённых контейнеров:")

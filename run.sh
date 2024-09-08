@@ -106,24 +106,29 @@ else
         if [[ "$file" != "servers.txt" ]]; then
             # Убираем неразрывные пробелы и обрезаем строку до первого слэша
             CLEANED_FILE_PREFIX=$(echo "$file" | sed 's/\\302\\240//g' | cut -d'/' -f1)
-        
+            
             # Если папка (контейнер) еще не добавлена, добавляем её в список
             if [[ ! " ${CHANGED_CONTAINERS[@]} " =~ " ${CLEANED_FILE_PREFIX} " ]]; then
                 CHANGED_CONTAINERS+=("$CLEANED_FILE_PREFIX")
+                echo $CLEANED_FILE_PREFIX
             fi
         fi
     done
-
+    echo ${CHANGED_CONTAINERS[@]}
     # Проверка, есть ли изменённые контейнеры
     if [ ${#CHANGED_CONTAINERS[@]} -eq 0 ]; then
         echo "Нет измененных контейнеров"
         exit 0
     fi
 
+ 
     # Преобразуем список контейнеров в строку с пробелами (для передачи в Python-скрипт)
     CHANGED_CONTAINERS_STR=$(IFS=" " ; echo "${CHANGED_CONTAINERS[*]}")
 
-    # Вызов Python-скрипта с изменёнными контейнерами
-    #python3 /path/to/your/python_script.py $CHANGED_CONTAINERS_STR
+    # Вывод строки для отладки
+    echo "Строка для передачи в Python: $CHANGED_CONTAINERS_STR"
+
+    # Вызов Python-скрипта с передачей контейнеров в виде аргументов
+    python3 y.py "${CHANGED_CONTAINERS[@]}"
 
 fi
