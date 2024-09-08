@@ -1,5 +1,6 @@
 #!/usr/local/bin/bash
 
+
 # Остановка скрипта при первой же ошибке
 set -e
 
@@ -14,8 +15,27 @@ LAST_COMMIT_HASH=$(git rev-parse dns-test/main)
 PREV_COMMIT_HASH=$(git rev-parse dns-test/main~1)
 echo "Последний коммит в dns-test: $LAST_COMMIT_HASH"
 
-#!/usr/local/bin/bash
+#Шаг 1: Парсинг всех хостов и IP-адресов из файла servers.txt
+echo "Парсинг файла servers.txt..."
+declare -A HOSTS_IPS
+if [ -f "servers.txt" ]; then
+    while read -r line; do
+        host=$(echo "$line" | awk '{print $1}')
+        ip=$(echo "$line" | awk '{print $2}')
+        if [ -n "$host" ] && [ -n "$ip" ]; then
+            HOSTS_IPS["$host"]="$ip"
+        fi
+    done < servers.txt
 
+    # Вывод всех хостов и их IP для проверки
+    echo "Все хосты и IP-адреса:"
+    for host in "${!HOSTS_IPS[@]}"; do
+        echo "$host -> ${HOSTS_IPS[$host]}"
+    done
+else
+    echo "Ошибка: файл servers.txt не найден!"
+    exit 1
+fi
 
 # Получение списка измененных файлов между последним и предыдущим коммитами
 CHANGED_FILES=$(git diff --name-only $PREV_COMMIT_HASH $LAST_COMMIT_HASH | sed 's/\\302\\240//g' | tr -d '"')
