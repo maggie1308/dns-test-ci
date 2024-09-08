@@ -84,36 +84,40 @@ if echo "$CHANGED_FILES" | grep -q "servers.txt"; then
 
     echo "Проверка SOA и NS для master-контейнеров..."
 
-    # Проверка, является ли контейнер мастером или слейвом
-    for host in $NEW_HOSTS; do
-        container_id=$(docker ps --filter "name=$host" --format "{{.Names}}")
-        
-        # Проверяем конфигурацию контейнера для определения его роли
-        if docker exec "$container_id" grep -q "type master;" /etc/bind/named.conf; then
-            echo "$container_id является мастер-контейнером"
-            ROLE="master"
-        elif docker exec "$container_id" grep -q "type slave;" /etc/bind/named.conf; then
-            echo "$container_id является слейв-контейнером"
-            ROLE="slave"
+    
+
+# IP-адреса master и slave серверов
+    MASTER_IP="172.28.1.1"
+    SLAVE_IPS=("172.28.2.2" "172.28.3.3")
+    ZONE="example.com"
+
+# Функция для запроса SOA записи
+    get_soa() {
+        local ip=$1
+        local zone=$2
+        dig @$ip $zone SOA +short
+    }
+
+# Получаем SOA запись с master сервера
+    MASTER_SOA=$(get_soa $MASTER_IP $ZONE)
+
+# Проверяем SOA записи на slave серверах
+    for SLAVE_IP in "${SLAVE_IPS[@]}"; do
+        SLAVE_SOA=$(get_soa $SLAVE_IP $ZONE)
+    
+        echo "Master SOA: $MASTER_SOA"
+        echo "Slave ($SLAVE_IP) SOA: $SLAVE_SOA"
+    
+        if [ "$MASTER_SOA" == "$SLAVE_SOA" ]; then
+            echo "SOA записи совпадают для $MASTER_IP и $SLAVE_IP."
         else
-            echo "Ошибка: не удалось определить роль контейнера $container_id"
+            echo "Ошибка: SOA записи НЕ совпадают для $MASTER_IP и $SLAVE_IP."
             exit 1
         fi
-
-        # Дальнейшая обработка в зависимости от роли контейнера
-        if [[ "$ROLE" == "master" ]]; then
-            # Проверка для мастер-контейнеров
-            echo "Проверка SOA для $container_id (контейнер $container_id)..."
-            docker exec "$container_id" dig @localhost SOA example.com || { echo "Ошибка: $host не отвечает на SOA-запросы"; exit 1; }
-
-            echo "Проверка NS для $container_id (контейнер $container_id)..."
-            docker exec "$container_id" dig @localhost NS example.com || { echo "Ошибка: $host не отвечает на NS-запросы"; exit 1; }
-        elif [[ "$ROLE" == "slave" ]]; then
-            # Проверка для слейв-контейнеров
-            echo "Проверка SOA для слейв-контейнера $container_id..."
-            docker exec "$container_id" dig @localhost SOA example.com || { echo "Ошибка: $host не отвечает на SOA-запросы для slave"; exit 1; }
-        fi
     done
+
+    echo "Все SOA записи совпадают."
+
 
 else
     echo "Файл servers.txt не изменен. Завершение работы скрипта."

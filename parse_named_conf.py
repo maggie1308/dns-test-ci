@@ -7,7 +7,7 @@ def get_container_config(container_id):
         # Чтение конфигурационного файла named.conf внутри контейнера
         result = subprocess.check_output(["docker", "exec", container_id, "cat", "/etc/bind/named.conf"])
         config = result.decode()
-        #print(config)  # Для отладки можно вывести конфигурацию
+        # print(config)  Для отладки можно вывести конфигурацию
         return config
     except subprocess.CalledProcessError as e:
         print(f"Ошибка при получении конфигурации с {container_id}: {e}")
@@ -15,21 +15,19 @@ def get_container_config(container_id):
 
 # Функция для поиска мастер-зон и IP-адресов для allow-transfer
 def find_master_zones_with_ips(config_data):
-    # Ищем блоки зоны и связанные с ними IP-адреса allow-transfer
-    # Исправлено регулярное выражение для поиска только зон с type master
-    pattern = r'zone\s+"(.*?)".*?type\s+master;.*?allow-transfer\s*\{(.*?)\};'
-    
+    # Ищем зоны, где первая строка начинается с zone, а вторая с type master
+    pattern = r'zone\s+"(.*?)"\s*\{[^\}]*?type\s+master;.*?allow-transfer\s*\{(.*?)\};'
     matches = re.findall(pattern, config_data, re.DOTALL)
-    print(matches)
-
+    
     master_zones = []
     for match in matches:
         zone_name = match[0].strip()  # Название зоны
         if zone_name == ".":  # Игнорируем зону "."
             continue
-        ip_addresses = match[1].replace(';', '').split()  # IP-адреса, удаляем ; и разбиваем строку
+
+        ip_addresses = match[1].replace(';', '').split()  # Удаляем ";" и разбиваем строку
         master_zones.append((zone_name, ip_addresses))
-    print(master_zones)
+
     return master_zones
 
 # Основная функция для обработки контейнеров
