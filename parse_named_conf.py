@@ -7,25 +7,21 @@ def get_container_config(container_id):
         # Чтение конфигурационного файла named.conf внутри контейнера
         result = subprocess.check_output(["docker", "exec", container_id, "cat", "/etc/bind/named.conf"])
         config = result.decode()
-        # print(config)  Для отладки можно вывести конфигурацию
         return config
     except subprocess.CalledProcessError as e:
         print(f"Ошибка при получении конфигурации с {container_id}: {e}")
         return None
 
-# Функция для поиска мастер-зон и IP-адресов для allow-transfer
+# Универсальная функция для поиска мастер-зон и IP-адресов для allow-transfer
 def find_master_zones_with_ips(config_data):
-    # Ищем зоны, где первая строка начинается с zone, а вторая с type master
-    pattern = r'zone\s+"(.*?)"\s*\{[^\}]*?type\s+master;.*?allow-transfer\s*\{(.*?)\};'
+    # Универсальное регулярное выражение для парсинга зон с и без IN
+    pattern = r'zone\s+"([\w\.]+)"(?:\s+IN)?\s*\{\s*[^}]*?type\s+master;\s*[^}]*?allow-transfer\s*\{([^}]+)\};'
     matches = re.findall(pattern, config_data, re.DOTALL)
-    
+
     master_zones = []
     for match in matches:
         zone_name = match[0].strip()  # Название зоны
-        if zone_name == ".":  # Игнорируем зону "."
-            continue
-
-        ip_addresses = match[1].replace(';', '').split()  # Удаляем ";" и разбиваем строку
+        ip_addresses = [ip.strip() for ip in match[1].split(';') if ip.strip()]  # Очистка IP-адресов и разбиение
         master_zones.append((zone_name, ip_addresses))
 
     return master_zones
@@ -34,9 +30,12 @@ def find_master_zones_with_ips(config_data):
 def process_containers(containers):
     for container_id in containers:
         print(f"Обработка конфигурации для контейнера: {container_id}")
+        
+        # Получаем конфигурацию контейнера
         config_data = get_container_config(container_id)
         
         if config_data:
+            # Парсим мастер-зоны
             master_zones = find_master_zones_with_ips(config_data)
             if master_zones:
                 print(f"Найдены мастер-зоны для контейнера {container_id}:")
